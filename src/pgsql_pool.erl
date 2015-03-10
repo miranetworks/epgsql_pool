@@ -66,17 +66,25 @@ init({Name, Size, Opts}) ->
 			undefined -> self();
 			_Name -> Name
 		 end,
-    {ok, Connection} = connect(Opts),
-	{ok, TRef} = timer:send_interval(60000, close_unused),
-    State = #state{
-      id          = Id,
-      size        = Size,
-      opts        = Opts,
-      connections = [{Connection, now_secs()}],
-      monitors    = [],
-      waiting     = queue:new(),
-      timer       = TRef},
-    {ok, State}.
+    case connect(Opts) of 
+
+    % {ok, Connection} = connect(Opts),
+        {ok, Connection} ->
+            {ok, TRef} = timer:send_interval(60000, close_unused),
+                State = #state{
+                    id          = Id,
+                    size        = Size,
+                    opts        = Opts,
+                    connections = [{Connection, now_secs()}],
+                    monitors    = [],
+                    waiting     = queue:new(),
+                    timer       = TRef},
+            {ok, State};
+        Error ->
+            timer:sleep(100),
+            {stop, Error}
+    end.
+
 
 %% Requestor wants a connection. When available then immediately return, otherwise add to the waiting queue.
 handle_call(get_connection, From, #state{connections = Connections, waiting = Waiting} = State) ->
