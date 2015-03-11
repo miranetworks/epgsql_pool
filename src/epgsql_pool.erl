@@ -28,8 +28,7 @@ stop(_State) ->
 
 init([]) ->
     {ok,
-     % {{simple_one_for_one, 2, 60},
-     {{simple_one_for_one, 20, 1},
+     {{simple_one_for_one, 2, 60},
       [{pool,
         {pgsql_pool, start_link, []},
         permanent, 2000, supervisor,

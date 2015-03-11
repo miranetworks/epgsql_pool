@@ -3,6 +3,7 @@
 -export([start_link/2, start_link/3, stop/1]).
 -export([get_connection/1, get_connection/2, return_connection/2]).
 -export([get_database/1]).
+-export([get_pool_size/1]).
 
 -export([init/1, code_change/3, terminate/2]). 
 -export([handle_call/3, handle_cast/2, handle_info/2]).
@@ -58,6 +59,9 @@ get_database(P) ->
     return_connection(P, C),
     {ok, Db}.
 
+get_pool_size(P) ->
+    gen_server:call(P, get_pool_size, infinity).
+
 %% -- gen_server implementation --
 
 init({Name, Size, Opts}) ->
@@ -66,28 +70,24 @@ init({Name, Size, Opts}) ->
 			undefined -> self();
 			_Name -> Name
 		 end,
-    case connect(Opts) of 
+    
+    {ok, TRef} = timer:send_interval(60000, close_unused),
 
-    % {ok, Connection} = connect(Opts),
-        {ok, Connection} ->
-            {ok, TRef} = timer:send_interval(60000, close_unused),
-                State = #state{
-                    id          = Id,
-                    size        = Size,
-                    opts        = Opts,
-                    connections = [{Connection, now_secs()}],
-                    monitors    = [],
-                    waiting     = queue:new(),
-                    timer       = TRef},
-            {ok, State};
-        Error ->
-            timer:sleep(100),
-            {stop, Error}
-    end.
-
+    State = #state{
+        id          = Id,
+        size        = Size,
+        opts        = Opts,
+        connections = [],
+        monitors    = [],
+        waiting     = queue:new(),
+        timer       = TRef},
+    {ok, State}.
+ 
+handle_call(get_pool_size, _From, #state{connections = Connections} = State) ->
+    {reply, length(Connections), State};
 
 %% Requestor wants a connection. When available then immediately return, otherwise add to the waiting queue.
-handle_call(get_connection, From, #state{connections = Connections, waiting = Waiting} = State) ->
+handle_call(get_connection, From, #state{id = Id, connections = Connections, waiting = Waiting} = State) ->
     case Connections of
         [{C,_} | T] -> 
 			% Return existing unused connection
@@ -96,8 +96,14 @@ handle_call(get_connection, From, #state{connections = Connections, waiting = Wa
 			case length(State#state.monitors) < State#state.size of
 				true ->
 					% Allocate a new connection and return it.
-					{ok, C} = connect(State#state.opts),
-				    {noreply, deliver(From, C, State)};
+                                        case connect(State#state.opts) of
+                                            {ok, C} ->
+                                                feedback_state(Id, connect),
+				                {noreply, deliver(From, C, State)};
+                                            _Error ->
+                                                feedback_state(Id, connect_failed),
+	 				        {reply, {error, timeout}, State}
+                                        end; 
 				false ->
 					% Reached max connections, let the requestor wait
 	 				{noreply, State#state{waiting = queue:in(From, Waiting)}}
@@ -132,10 +138,15 @@ handle_cast(Request, State) ->
     {stop, {unsupported_cast, Request}, State}.
 
 %% Close all connections that are unused for longer than a minute.
-handle_info(close_unused, State) ->
+handle_info(close_unused, #state{id = Id} = State) ->
 	Old = now_secs() - 60,
 	{Unused, Used} = lists:partition(fun({_C,Time}) -> Time < Old end, State#state.connections),
-	[ pgsql:close(C) || {C,_} <- Unused ],
+        F = fun(ConnId) ->
+            pgsql:close(ConnId),
+            feedback_state(Id, close_unused)
+        end,
+	% [ pgsql:close(C) || {C,_} <- Unused ],
+	[ F(C) || {C,_} <- Unused ],
 	{noreply, State#state{connections=Used}};
 
 %% Requestor we are monitoring went down. Kill the associated connection, as it might be in an unknown state.
@@ -149,8 +160,12 @@ handle_info({'DOWN', M, process, _Pid, _Info}, #state{monitors = Monitors} = Sta
     end;
 
 %% One of our database connections went down. Clean up our administration.
-handle_info({'EXIT', ConnectionPid, _Reason}, State) ->
+handle_info({'EXIT', ConnectionPid, _Reason}, #state{id = Id} = State) ->
     #state{connections = Connections, monitors = Monitors} = State,
+    case proplists:is_defined(ConnectionPid, Connections) of
+        true -> feedback_state(Id, died);
+        _ -> ok
+    end,
     Connections2 = proplists:delete(ConnectionPid, Connections),
     F = fun({C, M}) when C == ConnectionPid -> erlang:demonitor(M), false;
            ({_, _}) -> true
@@ -197,3 +212,12 @@ return(C, #state{connections = Connections, waiting = Waiting} = State) ->
 now_secs() ->
     {M,S,_M} = erlang:now(),
     M*1000 + S.
+
+feedback_state(Id, ConnState) ->
+    case application:get_env(state_feedback_mf) of
+        {ok, {M,F}} -> 
+            spawn(M,F,[{epgsql_pool, Id, connection, ConnState}]);
+        _ ->
+            ok
+    end.
+
