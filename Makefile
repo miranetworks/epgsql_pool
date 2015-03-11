@@ -4,7 +4,8 @@ VERSION		:= 0.1
 ERL  		:= erl
 ERLC 		:= erlc
 
-EPGSQL_EBIN	:= ../epgsql/ebin
+# EPGSQL_EBIN	:= ../epgsql/ebin
+EPGSQL_EBIN	:= epgsql/ebin
 
 # ------------------------------------------------------------------------
 
