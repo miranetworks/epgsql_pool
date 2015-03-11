@@ -4,11 +4,12 @@ echo "I smack you janky!"
 
 . /home/ubuntu/erlang/R16B03-1/activate
 
-cd ../
+pushd ..
+rm -rf epgsql
 git clone git@github.com:miranetworks/epgsql
 cd epgsql
 make
-cd ../epgsql_pool
+popd
 
 
 su postgres -c "cat sql/create_db.sql | psql"
