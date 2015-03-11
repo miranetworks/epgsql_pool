@@ -4,13 +4,13 @@ VERSION		:= 0.1
 ERL  		:= erl
 ERLC 		:= erlc
 
-EPGSQL_EBIN	:= ~/src/epgsql/ebin
+EPGSQL_EBIN	:= ../epgsql/ebin
 
 # ------------------------------------------------------------------------
 
 ERLC_FLAGS	:= -Wall 
 
-SRC			:= $(wildcard src/*.erl)
+SRC		:= $(wildcard src/*.erl)
 TESTS 		:= $(wildcard test_src/*.erl)
 RELEASE		:= $(NAME)-$(VERSION).tar.gz
 

@@ -2,7 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(host, "localhost").
+-define(opts, [{host, "localhost"}, {username, "epgsql_pool_test"}, {password, "password"}, {database, "epgsql_pool_test"}]).
 
 get_connections_test() ->
     with_pool_2(
@@ -39,7 +39,7 @@ return_twice_test() ->
       end).
 
 connection_dies_test() ->
-    with_pool_1(
+    with_pool_2(
       fun(P) ->
               {ok, C1} = get_connection(P),
               exit(C1, kill),
@@ -56,15 +56,16 @@ connection_owner_dies_test() ->
                             Self ! {connection, C}
                     end),
               receive
-                  {connection, C} ->
-                      {ok, C} = get_connection(P),
-                      ok = pgsql_pool:return_connection(P, C)
+                  {connection, C1} ->
+                      {ok, C2} = get_connection(P),
+                      ?assert(C1 =/= C2),
+                      ok = pgsql_pool:return_connection(P, C2)
               end
       end).
 
 named_pool_test() ->
     Name = test_pool,
-    {ok, _P} = pgsql_pool:start_link(Name, 1, [{host, ?host}]),
+    {ok, _P} = pgsql_pool:start_link(Name, 1, ?opts),
     {ok, C} = get_connection(Name),
     ok = pgsql_pool:return_connection(Name, C),
     pgsql_pool:stop(Name).
@@ -72,7 +73,7 @@ named_pool_test() ->
 %% -- internal functions --
 
 with_pool(Size, F) ->
-    {ok, P} = pgsql_pool:start_link(Size, [{host, ?host}]),
+    {ok, P} = pgsql_pool:start_link(Size, ?opts),
     try F(P)
     after
         pgsql_pool:stop(P)

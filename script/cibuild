@@ -1,0 +1,18 @@
+#!/bin/bash
+
+echo "I smack you janky!"
+
+. /home/ubuntu/erlang/R16B03-1/activate
+
+git clone git@github.com:miranetworks/epgsql
+cd epgsql
+make
+cd ../
+
+
+su postgres -c "cat sql/create_db.sql | psql"
+
+make test
+
+
+#EOF

@@ -153,7 +153,7 @@ handle_info(close_unused, #state{id = Id} = State) ->
 handle_info({'DOWN', M, process, _Pid, _Info}, #state{monitors = Monitors} = State) ->
     case lists:keytake(M, 2, Monitors) of
         {value, {C, M}, Monitors2} ->
-			pgsql:close(C),
+	    pgsql:close(C),
             {noreply, State#state{monitors = Monitors2}};
         false ->
             {noreply, State}
