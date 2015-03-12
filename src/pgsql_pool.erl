@@ -71,7 +71,8 @@ init({Name, Size, Opts}) ->
 			_Name -> Name
 		 end,
     
-    {ok, TRef} = timer:send_interval(60000, close_unused),
+    % {ok, TRef} = timer:send_interval(60000, close_unused),
+    {ok, TRef} = timer:send_interval(300000, close_unused),
 
     State = #state{
         id          = Id,
