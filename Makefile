@@ -1,45 +1,23 @@
-NAME		:= epgsql_pool
-VERSION		:= 0.1
 
-ERL  		:= erl
-ERLC 		:= erlc
+.PHONY: all app clean test deps release
 
-EPGSQL_EBIN	:= ../epgsql/ebin
+deps:
+	./rebar get-deps
 
-# ------------------------------------------------------------------------
-
-ERLC_FLAGS	:= -Wall 
-
-SRC		:= $(wildcard src/*.erl)
-TESTS 		:= $(wildcard test_src/*.erl)
-RELEASE		:= $(NAME)-$(VERSION).tar.gz
-
-APPDIR		:= $(NAME)-$(VERSION)
-BEAMS		:= $(SRC:src/%.erl=ebin/%.beam) 
-
-compile: $(BEAMS)
-
-app: compile
-	@mkdir -p $(APPDIR)/ebin
-	@cp -r ebin/* $(APPDIR)/ebin/
-
-release: app
-	@tar czvf $(RELEASE) $(APPDIR)
+app: deps
+	./rebar compile
 
 clean:
-	@rm -f ebin/*.beam
-	@rm -rf $(NAME)-$(VERSION) $(NAME)-*.tar.gz
+	rm -fr .eunit
+	./rebar clean
 
-test: $(TESTS:test_src/%.erl=test_ebin/%.beam) $(BEAMS)
-	$(ERL) -pa $(EPGSQL_EBIN) -pa ebin/ -pa test_ebin/ -noshell -s pgsql_pool_tests test -s init stop
+test: app
+	sudo /etc/init.d/postgresql start
+	sudo su postgres -c "cat sql/create_db.sql | psql"
+	mkdir -p .eunit
+	./rebar skip_deps=true eunit
 
-# ------------------------------------------------------------------------
+all: clean app test
+	@echo "Done."
 
-.SUFFIXES: .erl .beam
-.PHONY:    app compile clean test
-
-ebin/%.beam : src/%.erl
-	$(ERLC) $(ERLC_FLAGS) -o $(dir $@) $<
-
-test_ebin/%.beam : test_src/%.erl
-	$(ERLC) $(ERLC_FLAGS) -o $(dir $@) $<
+include docker/docker.mk
