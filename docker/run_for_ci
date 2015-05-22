@@ -1,0 +1,4 @@
+#!/bin/bash
+WRKDIR=`readlink -f $(pwd)`
+docker run --rm=true -i -u="developer" --name epgsql_pool -v $(dirname $SSH_AUTH_SOCK):$(dirname $SSH_AUTH_SOCK) -e SSH_AUTH_SOCK=$SSH_AUTH_SOCK -v $(pwd)/../:/workspace/base epgsql_pool $1
+docker rm -f epgsql_pool 2>/dev/null  || true
