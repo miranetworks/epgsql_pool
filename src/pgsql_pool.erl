@@ -5,7 +5,7 @@
 -export([get_database/1]).
 -export([get_pool_size/1]).
 
--export([init/1, code_change/3, terminate/2]). 
+-export([init/1, code_change/3, terminate/2]).
 -export([handle_call/3, handle_cast/2, handle_info/2]).
 
 -record(state, {id, size, connections, monitors, waiting, opts, timer}).
@@ -13,13 +13,14 @@
  %% -- client interface --
 
 opts(Opts) ->
-    Defaults = [{host, "localhost"},
-                {port, 5432},
+    Defaults = [{database, "not_given"},
+                {host, "localhost"},
                 {password, ""},
-                {username, os:getenv("USER")},
-                {database, "not_given"}],
+                {port, 5432},
+                {username, os:getenv("USER")}],
     Opts2 = lists:ukeysort(1, proplists:unfold(Opts)),
-    proplists:normalize(lists:ukeymerge(1, Opts2, Defaults), []).
+    lists:ukeymerge(1, Opts2, Defaults).
+    % proplists:normalize(lists:ukeymerge(1, Opts2, Defaults), []).
 
 
 start_link(Size, Opts) ->
@@ -42,7 +43,7 @@ get_connection(P) ->
 get_connection(P, Timeout) ->
 	try
     	gen_server:call(P, get_connection, Timeout)
-	catch 
+	catch
 		_:_ ->
             gen_server:cast(P, {cancel_wait, self()}),
             {error, timeout}
@@ -66,11 +67,11 @@ get_pool_size(P) ->
 
 init({Name, Size, Opts}) ->
     process_flag(trap_exit, true),
-    Id = case Name of 
+    Id = case Name of
 			undefined -> self();
 			_Name -> Name
 		 end,
-    
+
     % {ok, TRef} = timer:send_interval(60000, close_unused),
     {ok, TRef} = timer:send_interval(300000, close_unused),
 
@@ -83,14 +84,14 @@ init({Name, Size, Opts}) ->
         waiting     = queue:new(),
         timer       = TRef},
     {ok, State}.
- 
+
 handle_call(get_pool_size, _From, #state{connections = Connections} = State) ->
     {reply, length(Connections), State};
 
 %% Requestor wants a connection. When available then immediately return, otherwise add to the waiting queue.
 handle_call(get_connection, From, #state{id = Id, connections = Connections, waiting = Waiting} = State) ->
     case Connections of
-        [{C,_} | T] -> 
+        [{C,_} | T] ->
 			% Return existing unused connection
 			{noreply, deliver(From, C, State#state{connections = T})};
         [] ->
@@ -104,7 +105,7 @@ handle_call(get_connection, From, #state{id = Id, connections = Connections, wai
                                             _Error ->
                                                 feedback_state(Id, connect_failed),
 	 				        {reply, {error, timeout}, State}
-                                        end; 
+                                        end;
 				false ->
 					% Reached max connections, let the requestor wait
 	 				{noreply, State#state{waiting = queue:in(From, Waiting)}}
@@ -216,9 +217,8 @@ now_secs() ->
 
 feedback_state(Id, ConnState) ->
     case application:get_env(state_feedback_mf) of
-        {ok, {M,F}} -> 
+        {ok, {M,F}} ->
             spawn(M,F,[{epgsql_pool, Id, connection, ConnState}]);
         _ ->
             ok
     end.
-
